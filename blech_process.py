@@ -127,29 +127,29 @@ spike_set.dejitter_spikes()
 
 ############################################################
 # Load classifier if specificed
-# classifier_params = json.load(
-#     open(os.path.join(
-#         blech_clust_dir,
-#         'params/waveform_classifier_params.json'), 'r'))
+classifier_params = json.load(
+    open(os.path.join(
+        blech_clust_dir,
+        'params/waveform_classifier_params.json'), 'r'))
 
-# if classifier_params['use_classifier']:
-#     classifier_handler = bpu.classifier_handler(
-#             data_dir_name, electrode_num, params_dict)
-#     sys.path.append(classifier_handler.create_pipeline_path)
-#     from feature_engineering_pipeline import *
-#     classifier_handler.load_pipelines()
-#     classifier_handler.classify_waveforms(
-#             spike_set.slices_dejittered,
-#             spike_set.times_dejittered,
-#             )
-#     classifier_handler.gen_plots()
-#     classifier_handler.write_out_recommendations()
+if classifier_params['use_classifier']:
+    classifier_handler = bpu.classifier_handler(
+            data_dir_name, electrode_num, params_dict)
+    sys.path.append(classifier_handler.create_pipeline_path)
+    from feature_engineering_pipeline import *
+    classifier_handler.load_pipelines()
+    classifier_handler.classify_waveforms(
+            spike_set.slices_dejittered,
+            spike_set.times_dejittered,
+            )
+    classifier_handler.gen_plots()
+    classifier_handler.write_out_recommendations()
 
-#     # throw_out_noise = True
-#     if classifier_params['throw_out_noise']:
-#         # Remaining data is now only spikes
-#         slices_dejittered, times_dejittered, clf_prob = \
-#             classifier_handler.pos_spike_dict.values()
+    # throw_out_noise = True
+    if classifier_params['throw_out_noise']:
+        # Remaining data is now only spikes
+        slices_dejittered, times_dejittered, clf_prob = \
+            classifier_handler.pos_spike_dict.values()
 
 ############################################################
 
