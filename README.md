@@ -8,6 +8,17 @@ High performance computing cluster at Brandeis
 can be easily modified to work in any parallel environment. Visit the Katz lab
 website at https://sites.google.com/a/brandeis.edu/katzlab/
 
+### Setup
+```
+cd <path_to_blech_clust>/requirements               # Move into blech_clust folder with requirements files
+conda clean --all                                   # Removes unused packages and caches
+conda create --name blech_clust python=3.8.13       # Create "blech_clust" environment with conda requirements
+conda activate blech_clust                          # Activate blech_clust environment
+bash conda_requirements_base.sh                     # Install main packages using conda/mamba
+bash install_gnu_parallel.sh                        # Install GNU Parallel
+pip install -r pip_requirements_base.txt            # Install pip requirements (not covered by conda)
+```
+
 ### Convenience scripts
 - blech_clust_pre.sh : Runs steps 2-5  
 - blech_clust_post.sh : Runs steps 7-14   
@@ -15,6 +26,7 @@ website at https://sites.google.com/a/brandeis.edu/katzlab/
 ### Order of operations  
 1. python blech_exp_info.py  
     - Pre-clustering step. Annotate recorded channels and save experimental parameters  
+    - Takes template for info and electrode layout as argument
 
 2. python blech_clust.py  
     - Setup directories and define clustering parameters  
@@ -43,3 +55,21 @@ website at https://sites.google.com/a/brandeis.edu/katzlab/
         - Palatability correlation coefficient  
 14. python blech_overlay_psth.py  
     - Plot overlayed PSTHs for units with respective waveforms  
+
+### Operations Workflow Visual 
+![blech_clust_outline - Flowchart](https://user-images.githubusercontent.com/12436309/223515611-c4756424-2370-4bf2-8e3f-092e5b91b48e.png)
+
+### Example workflow
+```
+DIR=/path/to/raw/data/files  
+python blech_exp_info.py $DIR  # Generate metadata and electrode layout  
+bash blech_clust_pre.sh $DIR   # Perform steps up to spike extraction and UMAP  
+python blech_post_process.py   # Add sorted units to HDF5 (CLI or .CSV as input)  
+bash blech_clust_post.sh       # Perform steps up to PSTH generation
+```
+
+### Test Dataset
+We are grateful to Brandeis University Google Filestream for hosting this dataset <br>
+Data to test workflow available at:<br>
+https://drive.google.com/drive/folders/1ne5SNU3Vxf74tbbWvOYbYOE1mSBkJ3u3?usp=sharing
+

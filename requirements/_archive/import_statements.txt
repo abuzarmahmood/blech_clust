@@ -1,0 +1,269 @@
+import argparse
+import glob
+import os
+import easygui
+import numpy as np
+import pylab as plt
+from tqdm import tqdm
+# Import stuff!
+import os
+import shutil
+import easygui
+import sys
+import glob
+import easygui
+import os
+import tables
+import sys
+import numpy as np
+import multiprocessing
+import json
+import glob
+import pandas as pd
+import read_file
+# Import stuff!
+import tables
+import numpy as np
+import os
+import easygui
+import sys
+from tqdm import tqdm
+import glob
+import json
+        # IMPORTANT!
+# Import stuff!
+import easygui
+import sys
+import os
+import glob
+import json
+import numpy as np
+import os
+import easygui
+import sys
+import re
+import itertools as it
+import argparse
+import pdb
+import pandas as pd
+import os
+import tables
+import easygui
+# Import stuff!
+import numpy as np
+import tables
+import easygui
+import sys
+import os
+from sklearn.decomposition import PCA
+from scipy.spatial.distance import cdist
+import matplotlib.pyplot as plt
+import seaborn as sns
+# Import stuff!
+import numpy as np
+import tables
+import easygui
+import sys
+import os
+import ast
+import json
+import matplotlib
+import shutil
+import pylab as plt
+from scipy.stats import ttest_ind
+import glob
+# IMPORTANT: ONLY WORKS ON PYTHON 2.7.X - NEO IS AN OLD PACKAGE THAT HAS NOT BEEN UPDATED TO PYTHON 3
+# Import stuff
+from neo.io import NeuroExplorerIO as nex
+from scipy.signal import resample
+import numpy as np
+import easygui
+import tables
+import os
+import sys
+# Import stuff!
+import numpy as np
+import tables
+import pylab as plt
+import easygui
+import sys
+import os
+import json
+import glob
+# Import stuff!
+import numpy as np
+import tables
+import easygui
+import sys
+import os
+from scipy.ndimage.filters import gaussian_filter1d
+import matplotlib
+import pylab as plt
+import seaborn as sns
+# Import stuff!
+import numpy as np
+import tables
+import easygui
+import sys
+import os
+import json
+import glob
+import itertools
+from scipy.stats import rankdata
+from scipy.stats import spearmanr
+from scipy.stats import pearsonr
+from scipy.stats import f_oneway
+from scipy.spatial.distance import cdist
+from scipy.stats import ttest_ind
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
+from sklearn.model_selection import LeavePOut
+from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.decomposition import PCA
+from sklearn.naive_bayes import GaussianNB
+from sklearn.linear_model import LinearRegression
+from sklearn.isotonic import IsotonicRegression
+from sklearn import preprocessing
+import os
+import tables
+import numpy as np
+import easygui
+import ast
+import sys
+import re
+import pylab as plt
+import matplotlib.image as mpimg
+from sklearn.mixture import GaussianMixture
+import blech_waveforms_datashader
+import argparse
+import pandas as pd
+import ast
+import matplotlib
+import shutil
+import os
+import tables
+import numpy as np
+from clustering import *
+import sys
+import json
+from matplotlib.backends.backend_pdf import PdfPages
+import pylab as plt
+import matplotlib.cm as cm
+from scipy.spatial.distance import mahalanobis
+from scipy import linalg
+import memory_monitor as mm
+import blech_waveforms_datashader
+from scipy.signal import fftconvolve
+from scipy.signal import gaussian
+from scipy.stats import zscore
+from sklearn.preprocessing import StandardScaler as scaler
+from sklearn.decomposition import PCA as pca
+from sklearn.mixture import GaussianMixture as gmm
+# Import stuff!
+import numpy as np
+import tables
+import easygui
+import sys
+import os
+import re
+import json
+import glob
+# Import stuff
+import os
+import tables
+import numpy as np
+import easygui
+import argparse
+# Import stuff!
+import numpy as np
+import tables
+import easygui
+import sys
+import os
+import matplotlib.pyplot as plt
+import blech_waveforms_datashader
+import shutil
+import memory_monitor as mm
+# Import stuff!
+import numpy as np
+import tables
+import easygui
+import sys
+import os
+from numba import jit
+import json
+import glob
+from scipy import sparse, signal
+from tqdm import tqdm
+from collections import Counter
+import numpy as np
+import tables
+import easygui
+import sys
+import os
+from bokeh.plotting import Figure
+from bokeh.models import ColumnDataSource
+from bokeh.layouts import row, widgetbox
+from bokeh.models.widgets import Slider, TextInput
+from bokeh.io import curdoc
+from bokeh.models.glyphs import MultiLine
+# Import stuff
+import datashader as ds
+import datashader.transfer_functions as tf
+from functools import partial
+from datashader.utils import export_image
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from imageio import imread
+import shutil
+import numpy as np
+from scipy.signal import butter
+from scipy.signal import filtfilt
+from scipy.interpolate import interp1d
+from sklearn.mixture import GaussianMixture
+import pylab as plt
+from sklearn.decomposition import PCA
+from scipy.signal import fftconvolve
+from sklearn.cluster import KMeans
+import tables
+import numpy as np
+import easygui
+import os
+sale, or importing the Program or any portion of it.
+make, use, sell, offer for sale, import and otherwise run, modify and
+import os
+import psutil
+import resource
+import inspect
+import sys
+# Import stuff!
+import tables
+import os
+import numpy as np
+import tqdm
+# Import stuff!
+import numpy as np
+import tables
+import easygui
+import sys
+import os
+import argparse
+import numpy as np
+import os
+import umap
+import pylab as plt
+import glob
+from tqdm import trange
+import sys
+import json
+import numpy as np
+import os
+import umap
+import pylab as plt
+import glob
+from tqdm import trange
+from joblib import Parallel, delayed
+import multiprocessing as mp
+import warnings
+import sys

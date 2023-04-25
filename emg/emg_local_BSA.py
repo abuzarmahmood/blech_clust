@@ -7,54 +7,73 @@ import numpy as np
 import easygui
 import os
 import multiprocessing
+import sys
+import shutil
+from glob import glob
 
-# Change to the directory that has the emg data files (env.npy and sig_trials.npy). Make a directory for storing the BSA results
-dir_name = easygui.diropenbox()
-os.chdir(dir_name)
-os.makedirs('emg_BSA_results')
+sys.path.append('..')
+from utils.blech_utils import imp_metadata
 
-# Load the data files
-env = np.load('env.npy')
-sig_trials = np.load('sig_trials.npy')
+# Get name of directory with the data files
+metadata_handler = imp_metadata(sys.argv)
+data_dir = metadata_handler.dir_name
+os.chdir(data_dir)
+print(f'Processing : {data_dir}')
 
-# Ask for the HPC queue to use
-# No longer asking for this, just submit to all.q
-#queue = easygui.multchoicebox(msg = 'Which HPC queue do you want to use for EMG analysis?', choices = ('neuro.q', 'dk.q'))
+emg_output_dir = os.path.join(data_dir, 'emg_output')
+# Get dirs for each emg CAR
+dir_list = glob(os.path.join(emg_output_dir,'emg*'))
+dir_list = [x for x in dir_list if os.path.isdir(x)]
 
-# Grab Brandeis unet username
-username = easygui.multenterbox(msg = 'Enter your Brandeis/Jetstream/personal computer username', fields = ['username'])
+for num, dir_name in enumerate(dir_list): 
+    #if 'emg_channel' not in os.path.basename(dir_name[:-1]):
+    if 'emg_env.npy' not in os.listdir(dir_name):
+        raise Exception(f'emg_env.py not found for {dir_name}')
+        exit()
 
-# Dump a shell file for the BSA analysis in the user's blech_clust directory on the desktop
-os.chdir('/home/%s/Desktop/blech_clust' % username[0])
-f = open('blech_emg.sh', 'w')
-print("module load PYTHON/ANACONDA-2.5.0", file=f)
-print("module load R", file=f)
-print("cd /home/%s/Desktop/blech_clust" % username[0], file=f)
-print("python emg_local_BSA_execute.py", file=f)
-f.close()
+    os.chdir(dir_name)
 
-# Dump shell file(s) for running GNU parallel job on the user's blech_clust folder on the desktop
-# First get number of CPUs - parallel be asked to run num_cpu-1 threads in parallel
-num_cpu = multiprocessing.cpu_count()
-# Then produce the file generating the parallel command
-f = open('blech_emg_jetstream_parallel.sh', 'w')
-print("parallel -k -j {:d} --noswap --load 100% --progress --joblog {:s}/results.log bash blech_emg_jetstream_parallel1.sh ::: {{1..{:d}}}".format(int(num_cpu)-1, dir_name, sig_trials.shape[0]*sig_trials.shape[1]), file = f)
-f.close()
-# Then produce the file that runs blech_process.py
-f = open('blech_emg_jetstream_parallel1.sh', 'w')
-print("export OMP_NUM_THREADS=1", file = f)
-print("python emg_local_BSA_execute.py $1", file = f)
-f.close()
-# Finally dump a file with the data directory's location (blech.dir)
-f = open('blech.dir', 'w')
-print(dir_name, file = f)
-f.close()
+    if os.path.exists('emg_BSA_results'):
+        shutil.rmtree('emg_BSA_results')
+    os.makedirs('emg_BSA_results')
 
-print("Now logout of the compute node and go back to the login node. Then say: qsub -t 1-"+str(sig_trials.shape[0]*sig_trials.shape[1])+" -q all.q -ckpt reloc blech_emg.sh")
+    # Load the data files
+    #env = np.load('./emg_0/env.npy')
+    #sig_trials = np.load('./emg_0/sig_trials.npy')
+    env = np.load('./emg_env.npy')
+    sig_trials = np.load('./sig_trials.npy')
 
+    # Grab Brandeis unet username
+    home_dir = os.getenv('HOME')
+    blech_emg_dir = os.path.join(home_dir,'Desktop','blech_clust','emg')
 
+    # Dump shell file(s) for running GNU parallel job on the 
+    # user's blech_clust folder on the desktop
+    # First get number of CPUs - parallel be asked to run num_cpu-1 
+    # threads in parallel
+    num_cpu = multiprocessing.cpu_count()
+    # Then produce the file generating the parallel command
+    f = open(os.path.join(blech_emg_dir,'blech_emg_jetstream_parallel.sh'), 'w')
+    format_args = (
+            int(num_cpu)-1, 
+            dir_name, 
+            sig_trials.shape[0]*sig_trials.shape[1])
+    print(
+            "parallel -k -j {:d} --noswap --load 100% --progress --joblog {:s}/results.log bash blech_emg_jetstream_parallel1.sh ::: {{1..{:d}}}".format(*format_args), 
+            file = f)
+    f.close()
 
+    # Then produce the file that runs blech_process.py
+    f = open(os.path.join(blech_emg_dir,'blech_emg_jetstream_parallel1.sh'), 'w')
+    print("export OMP_NUM_THREADS=1", file = f)
+    print("python emg_local_BSA_execute.py $1", file = f)
+    f.close()
 
-
-
-
+    # Finally dump a file with the data directory's location (blech.dir)
+    # If there is more than one emg group, this will iterate over them
+    if num == 0:
+        f = open(os.path.join(blech_emg_dir,'BSA_run.dir'), 'w')
+    else:
+        f = open(os.path.join(blech_emg_dir,'BSA_run.dir'), 'a')
+    print(dir_name, file = f)
+    f.close()

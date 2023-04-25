@@ -1,0 +1,48 @@
+"""
+List of imports parsed from python files in first level of blech_clust dir
+(i.e. files present as soon as you enter dir, files in subdirectories not included)
+
+This is an attempt to simplify the setup requirements for blech_clust
+"""
+#argparse                       # inbuilt
+#ast                            # inbuilt
+#collections                    # inbuilt
+#functools                      # inbuilt
+#glob                           # inbuilt
+#inspect                        # inbuilt
+#itertools                      # inbuilt
+#json                           # inbuilt
+#multiprocessing                # inbuilt
+#resource                       # inbuilt
+#shutil                         # inbuilt
+#sys                            # inbuilt
+#warnings                       # inbuilt
+#pdb                            # inbuilt
+#os                             # inbuilt
+#re                             # inbuilt
+#blech_waveforms_datashader     # 2nd party
+#clustering                     # 2nd party
+#memory_monitor                 # 2nd party
+#read_file                      # 2nd party
+#pylab                          # submodule - matplotlib
+#tables                         # renamed - pytables
+#sklearn                        # renamed - scikit-learn
+#umap                           # renamed - umap-learn
+#neo                            # not needed for sorting
+
+bokeh
+datashader
+easygui
+imageio
+joblib
+matplotlib
+numba
+numpy
+pandas
+psutil
+pytables
+scipy
+seaborn
+scikit-learn
+tqdm
+umap-learn

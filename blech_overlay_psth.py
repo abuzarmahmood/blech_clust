@@ -7,79 +7,42 @@ import sys
 import os
 import json
 import glob
+from utils.blech_utils import imp_metadata
 
-# Ask for the directory where the hdf5 file sits, and change to that directory
 # Get name of directory with the data files
-if len(sys.argv) > 1:
-    dir_name = os.path.abspath(sys.argv[1])
-    if dir_name[-1] != '/':
-        dir_name += '/'
-else:
-    dir_name = easygui.diropenbox(msg = 'Please select data directory')
+metadata_handler = imp_metadata(sys.argv)
+dir_name = metadata_handler.dir_name
 os.chdir(dir_name)
+print(f'Processing : {dir_name}')
+
+params_dict = metadata_handler.params_dict
+info_dict = metadata_handler.info_dict
+
+# Open the hdf5 file
+hf5 = tables.open_file(metadata_handler.hdf5_name, 'r+')
 
 # Make directory to store the PSTH plots. Delete and remake the directory if it exists
 try:
-	os.system('rm -r '+'./overlay_PSTH')
+    os.system('rm -r '+'./overlay_PSTH')
 except:
-	pass
+    pass
 os.mkdir('./overlay_PSTH')
-
-# Look for the hdf5 file in the directory
-file_list = os.listdir('./')
-hdf5_name = ''
-for files in file_list:
-	if files[-2:] == 'h5':
-		hdf5_name = files
-
-# Open the hdf5 file
-hf5 = tables.open_file(hdf5_name, 'r+')
-
-# Params file with processing paramters
-json_name = glob.glob('./**.params')[0]
-with open(json_name,'r') as params_file_connect:
-    params_dict = json.load(params_file_connect)
-
-# Json file with EXPERIMENTAL parameters
-dir_basename = os.path.basename(dir_name[:-1])
-json_path = glob.glob(os.path.join(dir_name, dir_basename + '.info'))[0]
-with open(json_path, 'r') as params_file:
-    info_dict = json.load(params_file)
 
 # Now ask the user to put in the identities of the digital inputs
 trains_dig_in = hf5.list_nodes('/spike_trains')
 # Pull identities from the json file
 identities = info_dict['taste_params']['tastes'] 
-#identities = easygui.multenterbox(msg = 'Put in the taste identities of the digital inputs', fields = [train._v_name for train in trains_dig_in])
 
 # Plot all tastes
 plot_tastes_dig_in = np.arange(len(identities))
 
-# Ask what taste to plot
-#plot_tastes = easygui.multchoicebox(msg = 'Which tastes do you want to plot? ', choices = ([taste for taste in identities]))
-#plot_tastes_dig_in = []
-#for taste in plot_tastes:
-#    plot_tastes_dig_in.append(identities.index(taste))
-
-# Ask the user for the pre stimulus duration used while making the spike arrays
-#pre_stim = easygui.multenterbox(msg = 'What was the pre-stimulus duration pulled into the spike arrays?', fields = ['Pre stimulus (ms)'])
-#pre_stim = int(pre_stim[0])
 pre_stim = params_dict['spike_array_durations'][0]
 
-# Get the psth paramaters from the user
-#params = easygui.multenterbox(msg = 'Enter the parameters for making the PSTHs', fields = ['Window size (ms)', 'Step size (ms)'])
-#for i in range(len(params)):
-#	params[i] = int(params[i])
 params = [params_dict['psth_params']['window_size'], 
             params_dict['psth_params']['step_size']]
 
 # Ask the user about the type of units they want to do the calculations on (single or all units)
-#chosen_units = []
 all_units = np.arange(trains_dig_in[0].spike_array.shape[1])
-#chosen_units = easygui.multchoicebox(msg = 'Which units do you want to choose? (*same as in setup*)', choices = ([i for i in all_units]))
-#for i in range(len(chosen_units)):
-#	chosen_units[i] = int(chosen_units[i])
-#chosen_units = np.array(chosen_units)
 chosen_units = all_units
 
 # Extract neural response data from hdf5 file

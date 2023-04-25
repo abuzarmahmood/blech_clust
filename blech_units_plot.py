@@ -5,38 +5,30 @@ import easygui
 import sys
 import os
 import matplotlib.pyplot as plt
-import blech_waveforms_datashader
 import shutil
-import memory_monitor as mm
 
-# Get directory where the hdf5 file sits, and change to that directory
+# Import 3rd part code
+from utils import blech_waveforms_datashader
+from utils import memory_monitor as mm
+from utils.blech_utils import imp_metadata
+
 # Get name of directory with the data files
-if sys.argv[1] != '':
-    dir_name = os.path.abspath(sys.argv[1])
-    if dir_name[-1] != '/':
-        dir_name += '/'
-else:
-    dir_name = easygui.diropenbox(msg = 'Please select data directory')
+metadata_handler = imp_metadata(sys.argv)
+dir_name = metadata_handler.dir_name
 os.chdir(dir_name)
+print(f'Processing : {dir_name}')
 
-# Get the names of all files in the current directory, and find the hdf5 (.h5) file
-file_list = os.listdir('./')
-hdf5_name = ''
-for files in file_list:
-	if files[-2:] == 'h5':
-		hdf5_name = files
-
-# Open up the hdf5 file
-hf5 = tables.open_file(hdf5_name, 'r+')
+# Open the hdf5 file
+hf5 = tables.open_file(metadata_handler.hdf5_name, 'r+')
 
 # Get all the units from the hdf5 file
 units = hf5.list_nodes('/sorted_units')
 
 # Delete and remake a directory for storing the plots of the unit waveforms (if it exists)
 try:
-	shutil.rmtree("unit_waveforms_plots", ignore_errors = True)
+    shutil.rmtree("unit_waveforms_plots", ignore_errors = True)
 except:
-	pass
+    pass
 os.mkdir("unit_waveforms_plots")
 
 # Now plot the waveforms from the units in this directory one by one
