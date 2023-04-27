@@ -227,9 +227,14 @@ if __name__ == '__main__':
                       params_dict['bandpass_upper_cutoff']],
                 sampling_rate=params_dict['sampling_rate'])
 
+            # Cut data to have integer number of seconds
+            sampling_rate = params_dict['sampling_rate']
+            filt_el = filt_el[:int(sampling_rate)*int(len(file_el)/sampling_rate)]
+
             # Delete raw electrode recording from memory
             del raw_el
 
+            # Get parameters for recording cutoff
             this_out = return_cutoff_values(
                             filt_el,
                             params_dict['sampling_rate'],

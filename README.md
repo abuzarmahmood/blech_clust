@@ -26,7 +26,7 @@ in your blech_clust environment...
 cd ~/Desktop
 git clone https://github.com/abuzarmahmood/neuRecommend.git
 cd neuRecommend
-bash src/utils/download_models.sh
+bash src/utils/io/download_models.sh
 conda activate blech_clust  
 pip install -r requirements.txt
 ```

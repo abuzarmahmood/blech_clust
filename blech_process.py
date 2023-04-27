@@ -132,7 +132,8 @@ classifier_params = json.load(
         blech_clust_dir,
         'params/waveform_classifier_params.json'), 'r'))
 
-if classifier_params['use_classifier']:
+if classifier_params['use_classifier'] and \
+    classifier_params['use_neuRecommend']:
     classifier_handler = bpu.classifier_handler(
             data_dir_name, electrode_num, params_dict)
     sys.path.append(classifier_handler.create_pipeline_path)
@@ -154,10 +155,20 @@ if classifier_params['use_classifier']:
 ############################################################
 
 spike_set.extract_amplitudes()
-spike_set.extract_features(
-        classifier_handler.feature_pipeline,
-        classifier_handler.feature_names,
-        )
+if classifier_params['use_neuRecommend']:
+    spike_set.extract_features(
+            classifier_handler.feature_pipeline,
+            classifier_handler.feature_names,
+            fitted_transformer=True,
+            )
+else:
+    import utils.blech_spike_features as bsf
+    spike_set.extract_features(
+            bsf.feature_pipeline,
+            bsf.feature_names,
+            fitted_transformer=False,
+            )
+
 spike_set.write_out_spike_data()
 
 
@@ -175,7 +186,9 @@ for cluster_num in range(2, params_dict['max_clusters']+1):
     cluster_handler.save_cluster_labels()
     cluster_handler.create_output_plots( 
                             params_dict)
-    cluster_handler.create_classifier_plots(classifier_handler)
+    if classifier_params['use_classifier'] and \
+        classifier_params['use_neuRecommend']:
+        cluster_handler.create_classifier_plots(classifier_handler)
 
 
 # Make file for dumping info about memory usage

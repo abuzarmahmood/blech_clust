@@ -1,15 +1,14 @@
 
 import utils.clustering as clust
-#import subprocess
+# import subprocess
 from joblib import load
 from sklearn.mixture import GaussianMixture as gmm
-from sklearn.preprocessing import StandardScaler as scaler
-from sklearn.decomposition import PCA
 from utils import blech_waveforms_datashader
+import subprocess
 from scipy.stats import zscore
 import pylab as plt
 import json
-#import sys
+# import sys
 import numpy as np
 import tables
 import os
@@ -183,7 +182,7 @@ class cluster_handler():
                     spike_waves = all_waveforms[spike_inds]
                     spike_times = all_times[spike_inds]
                     spike_ax.plot(spike_waves.T, color='k', alpha=0.1)
-                    #spike_ax.set_title(f'Count : {np.sum(spike_bool)}')
+                    # spike_ax.set_title(f'Count : {np.sum(spike_bool)}')
                     spike_ax.text(1, 0.5,
                                   f'Count : {np.sum(spike_bool)}' + '\n' +
                                   f'Mean prob : {spike_prob.mean():.3f}',
@@ -203,7 +202,7 @@ class cluster_handler():
                     noise_waves = all_waveforms[noise_inds]
                     noise_times = all_times[noise_inds]
                     noise_ax.plot(noise_waves.T, color='k', alpha=0.1)
-                    #noise_ax.set_title(f'Count : {np.sum(noise_bool)}')
+                    # noise_ax.set_title(f'Count : {np.sum(noise_bool)}')
                     noise_ax.text(1, 0.5,
                                   f'Count : {np.sum(noise_bool)}' + '\n' +
                                   f'Mean prob : {noise_prob.mean():.3f}',
@@ -323,14 +322,9 @@ class classifier_handler():
     ):
         home_dir = os.environ.get("HOME")
         model_dir = f'{home_dir}/Desktop/neuRecommend/model'
-        # Run download model script to make sure latest model is being used
-        # process=subprocess.Popen(
-        #    f'python {home_dir}/Desktop/blech_clust/utils/download_wav_classifier.py', shell=True)
-        # Forces process to complete before proceeding
-        #stdout, stderr=process.communicate()
-        # If model_dir still doesn't exist, then throw an error
-        if not os.path.exists(model_dir):
-            raise Exception("Couldn't download model")
+
+        # Download neuRecommend if not found
+        self.download_neurecommend_models(home_dir, model_dir)
 
         pred_pipeline_path = f'{model_dir}/xgboost_full_pipeline.dump'
         feature_pipeline_path = f'{model_dir}/feature_engineering_pipeline.dump'
@@ -357,6 +351,35 @@ class classifier_handler():
             data_dir,
             f'Plots/{electrode_num:02}')
         self.get_waveform_classifier_params()
+
+    def download_neurecommend_models(self, home_dir, model_dir):
+        """
+        If models are not present in the right place
+        Attempt to download them
+        """
+        # If neuRecommend not present, clone it
+        git_path = 'https://github.com/abuzarmahmood/neuRecommend.git'
+        neurecommend_dir = f'{home_dir}/Desktop/neuRecommend'
+        if not os.path.exists(neurecommend_dir):
+            process = subprocess.Popen(
+                    f'git clone {git_path} {neurecommend_dir}', shell=True)
+            # Forces process to complete before proceeding
+            stdout, stderr = process.communicate()
+
+        # If model_dir doesn't exist, then download models
+        if not os.path.exists(f'{model_dir}/.models_downloaded'):
+            print('Model directory does not exist')
+            print('Attempting to download model')
+
+            process = subprocess.Popen(
+                f'bash {neurecommend_dir}/src/utils/io/download_models.sh', shell=True)
+            # Forces process to complete before proceeding
+            stdout, stderr = process.communicate()
+
+        # If model_dir still doesn't exist, then throw an error
+        if not os.path.exists(model_dir):
+            raise Exception("Couldn't download model, please refer to '\
+                    'blech_clust/README.md#setup for instructions")
 
     def get_waveform_classifier_params(self):
         _, self.blech_clust_dir, _ = get_dir_names()
@@ -642,12 +665,13 @@ class spike_handler():
         """
         Extract waveforms from filtered electrode
         """
-        slices, spike_times, polarity, mean_val, threshold = clust.extract_waveforms_abu(self.filt_el,
-                                                                                         spike_snapshot=[self.params_dict['spike_snapshot_before'],
-                                                                                                         self.params_dict['spike_snapshot_after']],
-                                                                                         sampling_rate=self.params_dict[
-                                                                                             'sampling_rate'],
-                                                                                         threshold_mult=self.params_dict['waveform_threshold'])
+        slices, spike_times, polarity, mean_val, threshold = \
+                clust.extract_waveforms_abu(
+                        self.filt_el,
+                        spike_snapshot=[self.params_dict['spike_snapshot_before'],
+                                     self.params_dict['spike_snapshot_after']],
+                        sampling_rate=self.params_dict['sampling_rate'],
+                        threshold_mult=self.params_dict['waveform_threshold'])
 
         self.slices = slices
         self.spike_times = spike_times
@@ -713,11 +737,16 @@ class spike_handler():
 
     def extract_features(self,
                          feature_transformer,
-                         feature_names):
+                         feature_names,
+                         fitted_transformer = True):
 
         self.feature_names = feature_names
-        self.spike_features = feature_transformer.transform(
-            self.slices_dejittered)
+        if fitted_transformer:
+            self.spike_features = feature_transformer.transform(
+                self.slices_dejittered)
+        else:
+            self.spike_features = feature_transformer.fit_transform(
+                self.slices_dejittered)
 
     def write_out_spike_data(self):
         """
