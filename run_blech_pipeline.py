@@ -15,9 +15,9 @@ parser = argparse.ArgumentParser(
 parser.add_argument('dir', type=str,
                     help='Path to directory containing data to be processed')
 parser.add_argument('-pre', action='store_true',
-                    help='Run preprocessing steps')
+                    help='Run preprocessing steps (blech_clust --> jetstream parallel)')
 parser.add_argument('-post', action='store_true',
-                    help='Run postprocessing steps')
+                    help='Run postprocessing steps (unit_similarity --> overlay_psth)')
 args = parser.parse_args()
 
 
