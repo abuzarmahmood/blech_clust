@@ -101,7 +101,8 @@ plt.close(fig)
 # And save to output_dir
 with open(os.path.join(output_dir, 'rms_report.txt'), 'w') as f:
 	f.write('RMS values for {}\n'.format(os.path.basename(data_dir)))
+	f.write('\n')
 	for i in range(len(rms_vals)):
-		f.write(f'{data_file_list[i]}: {rms_vals[i]} uV\n')
+		f.write(f'{data_file_list[i]}: {rms_vals[i]} \tuV\n')
 
 
