@@ -10,7 +10,6 @@ import pylab as plt
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from scipy.ndimage import white_tophat
-from sklearn.neighbors import NeighborhoodComponentsAnalysis
 import pandas as pd
 from scipy.stats import zscore
 from scipy.signal import welch
@@ -18,11 +17,9 @@ from scipy.signal import welch
 # Have to be in blech_clust/emg/gape_QDA_classifier dir
 from detect_peaks import detect_peaks
 from QDA_classifier import QDA
+os.chdir(os.path.expanduser('~/Desktop/blech_clust/emg/gape_QDA_classifier'))
 sys.path.append('../..')
 from utils.blech_utils import imp_metadata
-from sklearn.svm import SVC
-from sklearn.model_selection import RepeatedStratifiedKFold, cross_val_score
-from sklearn.neural_network import MLPClassifier
 import itertools
 from sklearn.mixture import GaussianMixture
 from sklearn.cluster import KMeans, AgglomerativeClustering
@@ -140,6 +137,167 @@ def find_segment(gape_locs, segment_starts, segment_ends):
         all_segment_inds.append(this_segment_inds)
     return np.array(all_segment_inds).flatten()
 
+def calc_peak_interval(peak_ind):
+    """
+    This function calculates the inter-burst-interval
+
+    Inputs:
+    peak_ind : (num_peaks,)
+
+    Outputs:
+    intervals : (num_peaks,)
+    """
+
+    # Get inter-burst-intervals for the accepted peaks,
+    # convert to Hz (from ms)
+    intervals = []
+    for peak in range(len(peak_ind)):
+        # For the first peak,
+        # the interval is counted from the second peak
+        if peak == 0:
+            intervals.append(
+                1000.0/(peak_ind[peak+1] - peak_ind[peak]))
+        # For the last peak, the interval is
+        # counted from the second to last peak
+        elif peak == len(peak_ind) - 1:
+            intervals.append(
+                1000.0/(peak_ind[peak] - peak_ind[peak-1]))
+        # For every other peak, take the largest interval
+        else:
+            intervals.append(
+                1000.0/(
+                    np.amax([(peak_ind[peak] - peak_ind[peak-1]),
+                             (peak_ind[peak+1] - peak_ind[peak])])
+                )
+            )
+    intervals = np.array(intervals)
+
+    return intervals
+
+def JL_process(this_trial_data, this_laser_prestim_dat, sig_trials_final):
+    """
+    This function takes in a trial of data and returns the gapes
+    according to Jenn Li's pipeline
+
+    Inputs:
+    trial_data : (time,)
+    stim_t : 1
+
+    Outputs:
+    gapes : (time,)
+    """
+
+    peak_ind = detect_peaks(
+        this_trial_dat,
+        mpd=85,
+        mph=np.mean(this_laser_prestim_dat) +
+        np.std(this_laser_prestim_dat)
+    )
+
+
+    # Drop first and last peaks
+    peak_ind = peak_ind[1:-1]
+
+    # Get the indices, in the smoothed signal,
+    # that are below the mean of the smoothed signal
+    below_mean_ind = np.where(this_trial_dat <=
+                              np.mean(this_laser_prestim_dat))[0]
+
+    #plt.plot(this_trial_dat)
+    #plt.plot(peak_ind, this_trial_dat[peak_ind], 'ro')
+    #plt.axhline(np.mean(this_laser_prestim_dat), color='k')
+    #plt.scatter(below_mean_ind, this_trial_dat[below_mean_ind], color='g')
+    #plt.show()
+
+    # Throw out peaks if they happen in the pre-stim period
+    accept_peaks = np.where(peak_ind > pre_stim)[0]
+    peak_ind = peak_ind[accept_peaks]
+
+    # Run through the accepted peaks, and append their breadths to durations.
+    # There might be peaks too close to the end of the trial -
+    # skip those. Append the surviving peaks to final_peak_ind
+    # Also threshold by durations
+    left_end_list = [np.where(below_mean_ind < peak)[0][-1] for peak in peak_ind]
+    right_end_list = [np.where(below_mean_ind > peak)[0][0] for peak in peak_ind]
+    dur = below_mean_ind[np.array(right_end_list)]-below_mean_ind[np.array(left_end_list)]
+    dur_bool = np.logical_and(dur > 20.0, dur <= 200.0)
+    durations = dur[dur_bool]
+    peak_ind = peak_ind[dur_bool]
+
+    # In case there aren't any peaks or just one peak
+    # (very unlikely), skip this trial and mark it 0 on sig_trials
+    if len(peak_ind) <= 1:
+        sig_trials_final[this_ind] = 0
+    else:
+        intervals = calc_peak_interval(peak_ind)
+
+        gape_bool = [QDA(intervals[peak], durations[peak]) for peak in range(len(durations))]
+        # Drop first one
+        gape_bool = gape_bool[1:]
+        peak_ind = peak_ind[1:]
+        # Make sure the peaks are within 2000-5000 ms of the stimulus
+        peak_bool = np.logical_and(peak_ind > pre_stim, peak_ind <= post_stim)
+        fin_bool = np.logical_and(gape_bool, peak_bool)
+
+        gape_peak_ind = peak_ind[fin_bool]
+
+        # If there are no gapes on a trial, mark these as 0
+        # on sig_trials_final and 0 on first_gape.
+        # Else put the time of the first gape in first_gape
+        if len(gape_peak_ind) == 0:
+            first_gape = 0
+            this_sig_trial = 0
+        else:
+            first_gape = gape_peak_ind[0] 
+            this_sig_trial = sig_trials_final[this_ind]
+
+    return gape_peak_ind, first_gape, this_sig_trial
+
+# Convert segment_dat and gapes_Li to pandas dataframe for easuer handling
+def gen_gape_frame(segment_dat_list, gapes_Li, inds):
+    """
+    Generate a dataframe with the following columns:
+    channel, taste, trial, segment_num, features, segment_raw, segment_bounds
+
+    Inputs:
+    segment_dat_list : list of lists
+
+    Returns:
+    gape_frame : pandas dataframe
+    """
+
+    gape_frame = pd.DataFrame(data = inds, 
+                              columns = ['channel', 'taste', 'trial'])
+    # Standardize features
+    gape_frame['features'] = [x[0] for x in segment_dat_list]
+    gape_frame['segment_raw'] = [x[1] for x in segment_dat_list]
+    gape_frame['segment_bounds'] = [x[2] for x in segment_dat_list]
+    gape_frame = gape_frame.explode(['features','segment_raw','segment_bounds'])
+
+    # Standardize features
+    raw_features = np.stack(gape_frame['features'].values)
+    scaled_features = StandardScaler().fit_transform(raw_features)
+    gape_frame['features'] = [x for x in scaled_features]
+
+    # Add index for each segment
+    gape_frame['segment_num'] = gape_frame.groupby(['channel', 'taste', 'trial']).cumcount()
+    gape_frame = gape_frame.reset_index(drop=True)
+
+    # Add classifier boolean
+    for row_ind, this_row in gape_frame.iterrows():
+        this_ind = (this_row['channel'], this_row['taste'], this_row['trial'])
+        bounds = this_row['segment_bounds']
+        if gapes_Li[this_ind][bounds[0]:bounds[1]].any():
+            gape_frame.loc[row_ind, 'classifier'] = 1
+        else:
+            gape_frame.loc[row_ind, 'classifier'] = 0
+    # Convert to int
+    gape_frame['classifier'] = gape_frame['classifier'].astype(int)
+
+    return gape_frame, scaled_features
+
+################################################################################
+################################################################################
 
 ############################################################
 # Load Data
@@ -215,8 +373,6 @@ env_final = np.reshape(
     ),
 )
 
-# Make an array to store gapes (with 1s)
-gapes_Li = np.zeros(env_final.shape)
 
 # Shape : (laser conditions x tastes x trials)
 sig_trials_final = np.reshape(
@@ -228,34 +384,29 @@ sig_trials_final = np.reshape(
     ),
 )
 
+# Make an array to store gapes (with 1s)
+gapes_Li = np.zeros(env_final.shape)
 # Also make an array to store the time of first gape on every trial
 first_gape = np.empty(sig_trials_final.shape, dtype=int)
 
-# Run through the trials and get burst times,
-# intervals and durations. Also check if these bursts are gapes -
-# if they are, put 1s in the gape array
-inds = list(np.ndindex(sig_trials_final.shape[:3]))
 segment_dat_list = []
+inds = list(np.ndindex(sig_trials_final.shape[:3]))
 for this_ind in inds:
-    # Get peak indices
     this_trial_dat = env_final[this_ind]
+
+    ### Jenn Li Process ###
+    # Get peak indices
     this_laser_prestim_dat = env_final[this_ind[0], :, :, :pre_stim]
+    gape_peak_inds, first_gape[this_ind], sig_trials_final[this_ind] = \
+            JL_process(
+                    this_trial_dat, 
+                    this_laser_prestim_dat,
+                    sig_trials_final)
+    gapes_Li[this_ind][gape_peak_inds] = 1
 
-    peak_ind = detect_peaks(
-        this_trial_dat,
-        mpd=85,
-        mph=np.mean(this_laser_prestim_dat) +
-        np.std(this_laser_prestim_dat)
-    )
-
+    ### AM Process ###
     segment_starts, segment_ends, segment_dat = extract_movements(
         this_trial_dat, size=200)
-
-    #plt.plot(this_trial_dat, linewidth=2)
-    #for this_start, this_end, this_dat in zip(segment_starts, segment_ends, segment_dat):
-    #    plt.plot(np.arange(this_start, this_end), this_dat,
-    #             linewidth = 5, alpha = 0.7)
-    #plt.show()
 
     (feature_array,
      feature_names,
@@ -268,82 +419,12 @@ for this_ind in inds:
     merged_dat = [feature_array, segment_dat, segment_bounds] 
     segment_dat_list.append(merged_dat)
 
-    # Get the indices, in the smoothed signal,
-    # that are below the mean of the smoothed signal
-    below_mean_ind = np.where(this_trial_dat <=
-                              np.mean(this_laser_prestim_dat))[0]
-
-    # Throw out peaks if they happen in the pre-stim period
-    accept_peaks = np.where(peak_ind > pre_stim)[0]
-    peak_ind = peak_ind[accept_peaks]
-
-    # Run through the accepted peaks, and append their breadths to durations.
-    # There might be peaks too close to the end of the trial -
-    # skip those. Append the surviving peaks to final_peak_ind
-    durations = []
-    final_peak_ind = []
-    for peak in peak_ind:
-        try:
-            left_end = np.where(below_mean_ind < peak)[0][-1]
-            right_end = np.where(below_mean_ind > peak)[0][0]
-        except:
-            continue
-        dur = below_mean_ind[right_end]-below_mean_ind[left_end]
-        if dur > 20.0 and dur <= 200.0:
-            durations.append(dur)
-            final_peak_ind.append(peak)
-    durations = np.array(durations)
-    peak_ind = np.array(final_peak_ind)
-
-    # In case there aren't any peaks or just one peak
-    # (very unlikely), skip this trial and mark it 0 on sig_trials
-    if len(peak_ind) <= 1:
-        sig_trials_final[this_ind] = 0
-    else:
-        # Get inter-burst-intervals for the accepted peaks,
-        # convert to Hz (from ms)
-        intervals = []
-        for peak in range(len(peak_ind)):
-            # For the first peak,
-            # the interval is counted from the second peak
-            if peak == 0:
-                intervals.append(
-                    1000.0/(peak_ind[peak+1] - peak_ind[peak]))
-            # For the last peak, the interval is
-            # counted from the second to last peak
-            elif peak == len(peak_ind) - 1:
-                intervals.append(
-                    1000.0/(peak_ind[peak] - peak_ind[peak-1]))
-            # For every other peak, take the largest interval
-            else:
-                intervals.append(
-                    1000.0/(
-                        np.amax([(peak_ind[peak] - peak_ind[peak-1]),
-                                 (peak_ind[peak+1] - peak_ind[peak])])
-                    )
-                )
-        intervals = np.array(intervals)
-
-        # Now run through the intervals and durations of the accepted
-        # movements, and see if they are gapes.
-        # If yes, mark them appropriately in gapes_Li
-        # Do not use the first movement/peak in the trial -
-        # that is usually not a gape
-        for peak in range(len(durations) - 1):
-            gape = QDA(intervals[peak+1], durations[peak+1])
-            if gape and peak_ind[peak+1] - pre_stim <= post_stim:
-                gapes_Li[this_ind[0], this_ind[1], this_ind[2], peak_ind[peak+1]] = 1.0
-
-        # If there are no gapes on a trial, mark these as 0
-        # on sig_trials_final and 0 on first_gape.
-        # Else put the time of the first gape in first_gape
-        if np.sum(gapes_Li[this_ind]) == 0.0:
-            sig_trials_final[this_ind] = 0
-            first_gape[this_ind] = 0
-        else:
-            first_gape[this_ind] = np.where(
-                gapes_Li[this_ind] > 0.0)[0][0]
-
+#fig,ax = plt.subplots(len(taste_names), 1, sharex=True, sharey=True)
+#for taste_num, taste_name in enumerate(taste_names):
+#    ax[taste_num].imshow(gapes_Li[0, taste_num], aspect='auto',
+#                         interpolation='gaussian')
+#    ax[taste_num].set_title(taste_name)
+#plt.show()
 
 ############################################################
 ## Cluster waveforms 
@@ -353,34 +434,7 @@ for this_ind in inds:
 # 2) Mean waveform
 # 3) Fraction of classifier gapes
 
-# Convert segment_dat and gapes_Li to pandas dataframe for easuer handling
-gape_frame = pd.DataFrame(data = inds, 
-                          columns = ['channel', 'taste', 'trial'])
-# Standardize features
-gape_frame['features'] = [x[0] for x in segment_dat_list]
-gape_frame['segment_raw'] = [x[1] for x in segment_dat_list]
-gape_frame['segment_bounds'] = [x[2] for x in segment_dat_list]
-gape_frame = gape_frame.explode(['features','segment_raw','segment_bounds'])
-
-# Standardize features
-raw_features = np.stack(gape_frame['features'].values)
-scaled_features = StandardScaler().fit_transform(raw_features)
-gape_frame['features'] = [x for x in scaled_features]
-
-# Add index for each segment
-gape_frame['segment_num'] = gape_frame.groupby(['channel', 'taste', 'trial']).cumcount()
-gape_frame = gape_frame.reset_index(drop=True)
-
-# Add classifier boolean
-for row_ind, this_row in gape_frame.iterrows():
-    this_ind = (this_row['channel'], this_row['taste'], this_row['trial'])
-    bounds = this_row['segment_bounds']
-    if gapes_Li[this_ind][bounds[0]:bounds[1]].any():
-        gape_frame.loc[row_ind, 'classifier'] = 1
-    else:
-        gape_frame.loc[row_ind, 'classifier'] = 0
-# Convert to int
-gape_frame['classifier'] = gape_frame['classifier'].astype(int)
+gape_frame, scaled_features = gen_gape_frame(segment_dat_list, gapes_Li, inds)
 
 ############################################################
 # Plot all segmented data for visual inspection
