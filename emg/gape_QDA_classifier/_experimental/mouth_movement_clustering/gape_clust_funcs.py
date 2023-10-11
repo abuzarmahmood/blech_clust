@@ -155,7 +155,6 @@ def calc_peak_interval(peak_ind):
 def JL_process(
         this_trial_dat, 
         this_laser_prestim_dat, 
-        sig_trials_final,
         pre_stim,
         post_stim,
         this_ind):
@@ -209,10 +208,8 @@ def JL_process(
     peak_ind = peak_ind[dur_bool]
 
     # In case there aren't any peaks or just one peak
-    # (very unlikely), skip this trial and mark it 0 on sig_trials
-    if len(peak_ind) <= 1:
-        sig_trials_final[this_ind] = 0
-    else:
+    # (very unlikely), skip this trial 
+    if len(peak_ind) > 1:
         intervals = calc_peak_interval(peak_ind)
 
         gape_bool = [QDA(intervals[peak], durations[peak]) for peak in range(len(durations))]
@@ -225,17 +222,7 @@ def JL_process(
 
         gape_peak_ind = peak_ind[fin_bool]
 
-        # If there are no gapes on a trial, mark these as 0
-        # on sig_trials_final and 0 on first_gape.
-        # Else put the time of the first gape in first_gape
-        if len(gape_peak_ind) == 0:
-            first_gape = 0
-            this_sig_trial = 0
-        else:
-            first_gape = gape_peak_ind[0] 
-            this_sig_trial = sig_trials_final[this_ind]
-
-    return gape_peak_ind, first_gape, this_sig_trial
+    return gape_peak_ind
 
 # Convert segment_dat and gapes_Li to pandas dataframe for easuer handling
 def gen_gape_frame(segment_dat_list, gapes_Li, inds):

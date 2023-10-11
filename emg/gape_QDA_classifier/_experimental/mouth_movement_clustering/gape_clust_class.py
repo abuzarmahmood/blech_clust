@@ -11,10 +11,11 @@ import pandas as pd
 from scipy.stats import zscore
 
 # Have to be in blech_clust/emg/gape_QDA_classifier dir
-os.chdir(os.path.expanduser('~/Desktop/blech_clust/emg/gape_QDA_classifier'))
-sys.path.append('../..')
+os.chdir(os.path.expanduser('~/Desktop/blech_clust/emg/gape_QDA_classifier/_experimental/mouth_movement_clustering'))
+sys.path.append(os.path.expanduser('~/Desktop/blech_clust'))
+sys.path.append(os.path.expanduser('~/Desktop/blech_clust/emg/gape_QDA_classifier'))
 from utils.blech_utils import imp_metadata
-from _experimental.gape_clust_funcs import (extract_movements,
+from gape_clust_funcs import (extract_movements,
                                             normalize_segments,
                                             extract_features,
                                             find_segment,
@@ -43,6 +44,13 @@ os.chdir(data_dir)
 
 # Open the hdf5 file
 hf5 = tables.open_file(metadata_handler.hdf5_name, 'r+')
+# Load the unique laser duration/lag combos and the trials that correspond
+# to them from the ancillary analysis node
+# Shape : (laser conditions x trials per laser condition)
+trials = hf5.root.ancillary_analysis.trials[:]
+laser_cond_num = len(trials)
+unique_lasers = hf5.root.ancillary_analysis.laser_combination_d_l[:]
+hf5.close()
 
 # Extract taste dig-ins from experimental info file
 info_dict = metadata_handler.info_dict
@@ -58,12 +66,6 @@ emg_output_dir = os.path.join(data_dir, 'emg_output')
 dir_list = glob(os.path.join(emg_output_dir, 'emg*'))
 dir_list = [x for x in dir_list if os.path.isdir(x)]
 
-# Load the unique laser duration/lag combos and the trials that correspond
-# to them from the ancillary analysis node
-# Shape : (laser conditions x trials per laser condition)
-trials = hf5.root.ancillary_analysis.trials[:]
-laser_cond_num = len(trials)
-unique_lasers = hf5.root.ancillary_analysis.laser_combination_d_l[:]
 
 # Pull out a specific channel
 num = 0
@@ -84,11 +86,10 @@ fin_plot_dir = os.path.join(data_dir, plot_dir)
 if not os.path.exists(fin_plot_dir):
     os.makedirs(fin_plot_dir)
 
-# Load the required emg data (the envelope and sig_trials)
+# Load the required emg data (the envelope) 
 env = np.load('emg_env.npy')
 num_tastes, num_trials, time_len = env.shape
 env = np.vstack(env)
-sig_trials = np.load('sig_trials.npy').flatten()
 
 # Now arrange these arrays by (laser condition X taste X trials X time)
 # Shape : (laser conditions x tastes x trials x time)
@@ -102,38 +103,23 @@ env_final = np.reshape(
     ),
 )
 
-
-# Shape : (laser conditions x tastes x trials)
-sig_trials_final = np.reshape(
-    sig_trials,
-    (
-        laser_cond_num,
-        num_tastes,
-        int(num_trials/laser_cond_num),
-    ),
-)
-
 # Make an array to store gapes (with 1s)
 gapes_Li = np.zeros(env_final.shape)
-# Also make an array to store the time of first gape on every trial
-first_gape = np.empty(sig_trials_final.shape, dtype=int)
 
 segment_dat_list = []
-inds = list(np.ndindex(sig_trials_final.shape[:3]))
+inds = list(np.ndindex(env_final.shape[:3]))
 for this_ind in inds:
     this_trial_dat = env_final[this_ind]
 
     ### Jenn Li Process ###
     # Get peak indices
     this_laser_prestim_dat = env_final[this_ind[0], :, :, :pre_stim]
-    gape_peak_inds, first_gape[this_ind], sig_trials_final[this_ind] = \
-            JL_process(
-                    this_trial_dat, 
-                    this_laser_prestim_dat,
-                    sig_trials_final,
-                    pre_stim,
-                    post_stim,
-                    this_ind,)
+    gape_peak_inds = JL_process(
+                        this_trial_dat, 
+                        this_laser_prestim_dat,
+                        pre_stim,
+                        post_stim,
+                        this_ind,)
     gapes_Li[this_ind][gape_peak_inds] = 1
 
     ### AM Process ###
@@ -284,13 +270,3 @@ ax[-1].set_xlabel('Time (ms)')
 plt.suptitle('Random waveforms from each cluster')
 fig.savefig(os.path.join(this_plot_dir, 'gape_cluster_waveforms.png'), dpi=300, bbox_inches='tight')
 plt.close(fig)
-
-############################################################
-############################################################
-# If given a waveform or set of waveforms, find the closest cluster
-
-# Cluster with highest probability of being a gape
-gape_clust = np.argmax(class_gape_per_label)
-
-# Extract waveforms from gape cluster
-gape_waveforms = clust_waveforms[gape_clust]
