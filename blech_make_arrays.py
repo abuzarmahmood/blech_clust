@@ -309,7 +309,7 @@ if __name__ == '__main__':
         hf5.create_group('/', 'spike_trains')
 
         # Pull out spike trains
-        for i, this_dig_in in enumerate(taste_starts_cutoff): 
+        for i, this_dig_in in zip(taste_digin_inds, taste_starts_cutoff): 
             print(f'Creating spike-trains for {dig_in_basename[i]}')
             create_spike_trains_for_digin(
                     taste_starts_cutoff,
@@ -324,7 +324,7 @@ if __name__ == '__main__':
         print('No sorted units found...NOT MAKING SPIKE TRAINS')
 
     # Separate out laser loop
-    for i, this_dig_in in enumerate(taste_starts_cutoff): 
+    for i, this_dig_in in zip(taste_digin_inds, taste_starts_cutoff): 
         print(f'Creating laser info for {dig_in_basename[i]}')
         create_laser_params_for_digin(
                 i,
@@ -372,7 +372,8 @@ if __name__ == '__main__':
             # And pull out emg data into this array
             for i in range(len(emg_pathname)):
                 data = hf5.get_node(emg_pathname[i])[:]
-                for j, this_taste_digin in enumerate(taste_starts_cutoff):
+                for j, this_taste_digin in \
+                        zip(taste_digin_inds, taste_starts_cutoff):
                     for k, this_start in enumerate(this_taste_digin):
                         trial_bounds = [
                                 int(this_start - durations[0]*sampling_rate_ms),
