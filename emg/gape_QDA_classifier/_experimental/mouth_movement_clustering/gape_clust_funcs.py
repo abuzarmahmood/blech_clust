@@ -26,6 +26,20 @@ def extract_movements(this_trial_dat, size = 250):
                    for x, y in zip(segment_starts, segment_ends)]
     return segment_starts, segment_ends, segment_dat
 
+def threshold_movement_lengths(
+        segment_starts,
+        segment_ends,
+        segment_dat,
+        min_len = 50,
+        max_len = 500):
+    """
+    Threshold movement lengths
+    """
+    keep_inds = [x for x, y in enumerate(segment_dat) if len(y) > min_len and len(y) < max_len]
+    segment_starts = segment_starts[keep_inds]
+    segment_ends = segment_ends[keep_inds]
+    segment_dat = [segment_dat[x] for x in keep_inds]
+    return segment_starts, segment_ends, segment_dat
 
 def normalize_segments(segment_dat):
     """
@@ -69,6 +83,7 @@ def extract_features(segment_dat, segment_starts, segment_ends):
                       for i in range(1, len(peak_times))][:-1]
     right_intervals = [peak_times[i+1] - peak_times[i]
                        for i in range(len(peak_times)-1)][1:]
+
     interp_segment_dat = normalize_segments(segment_dat)
     pca_segment_dat = PCA(n_components=3).fit_transform(interp_segment_dat)
 
@@ -152,6 +167,30 @@ def calc_peak_interval(peak_ind):
 
     return intervals
 
+def get_peak_edges(peak_ind, below_mean_ind):
+    """
+    Get edges of peaks which are "below_mean_ind"
+    If one edge doesn't come back below baseline, drop that peak
+    """
+    left_end_list = []
+    right_end_list = []
+    keep_peaks = []
+    for i, this_peak in enumerate(peak_ind):
+        left_end_ind_list = np.where(below_mean_ind < this_peak)[0]
+        right_end_ind_list = np.where(below_mean_ind > this_peak)[0]
+        # Don't take peaks which are missing an end
+        if len(left_end_ind_list) and len(right_end_ind_list):
+            left_end = below_mean_ind[left_end_ind_list[-1]]
+            right_end = below_mean_ind[right_end_ind_list[0]]
+            left_end_list.append(left_end)
+            right_end_list.append(right_end)
+            keep_peaks.append(i)
+    return (
+            np.array(left_end_list), 
+            np.array(right_end_list), 
+            np.array(keep_peaks)
+            )
+
 def JL_process(
         this_trial_dat, 
         this_laser_prestim_dat, 
@@ -178,8 +217,8 @@ def JL_process(
     )
 
 
-    # Drop first and last peaks
-    peak_ind = peak_ind[1:-1]
+    ## Drop first and last peaks
+    #peak_ind = peak_ind[1:-1]
 
     # Get the indices, in the smoothed signal,
     # that are below the mean of the smoothed signal
@@ -195,17 +234,32 @@ def JL_process(
     # Throw out peaks if they happen in the pre-stim period
     accept_peaks = np.where(peak_ind > pre_stim)[0]
     peak_ind = peak_ind[accept_peaks]
+    if len(peak_ind) == 0:
+        return None
+
 
     # Run through the accepted peaks, and append their breadths to durations.
     # There might be peaks too close to the end of the trial -
     # skip those. Append the surviving peaks to final_peak_ind
     # Also threshold by durations
-    left_end_list = [np.where(below_mean_ind < peak)[0][-1] for peak in peak_ind]
-    right_end_list = [np.where(below_mean_ind > peak)[0][0] for peak in peak_ind]
-    dur = below_mean_ind[np.array(right_end_list)]-below_mean_ind[np.array(left_end_list)]
+    left_end_list, right_end_list, keep_peaks = \
+            get_peak_edges(peak_ind, below_mean_ind)
+    if len(peak_ind) == 0:
+        return None
+    peak_ind = peak_ind[keep_peaks]
+
+        #left_end_list = [np.where(below_mean_ind < peak)[0][-1] \
+        #        for peak in peak_ind]
+        #right_end_list = [np.where(below_mean_ind > peak)[0][0] \
+        #        for peak in peak_ind]
+
+    #dur = below_mean_ind[np.array(right_end_list)]-below_mean_ind[np.array(left_end_list)]
+    dur = right_end_list - left_end_list 
     dur_bool = np.logical_and(dur > 20.0, dur <= 200.0)
     durations = dur[dur_bool]
     peak_ind = peak_ind[dur_bool]
+    if len(peak_ind) == 0:
+        return None
 
     # In case there aren't any peaks or just one peak
     # (very unlikely), skip this trial 
@@ -221,6 +275,8 @@ def JL_process(
         fin_bool = np.logical_and(gape_bool, peak_bool)
 
         gape_peak_ind = peak_ind[fin_bool]
+    else:
+        gape_peak_ind = None
 
     return gape_peak_ind
 

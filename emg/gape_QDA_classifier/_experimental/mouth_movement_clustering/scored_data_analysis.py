@@ -13,6 +13,7 @@ os.chdir(os.path.expanduser('~/Desktop/blech_clust/emg/gape_QDA_classifier/_expe
 sys.path.append(os.path.expanduser('~/Desktop/blech_clust'))
 sys.path.append(os.path.expanduser('~/Desktop/blech_clust/emg/gape_QDA_classifier'))
 from utils.blech_utils import imp_metadata
+from extract_scored_data import return_taste_orders, process_scored_data
 from gape_clust_funcs import (extract_movements,
                                             normalize_segments,
                                             extract_features,
@@ -20,6 +21,7 @@ from gape_clust_funcs import (extract_movements,
                                             calc_peak_interval,
                                             JL_process,
                                             gen_gape_frame,
+                                            threshold_movement_lengths,
                                             )
 
 import itertools
@@ -37,12 +39,13 @@ data_subdirs = [subdir for subdir in data_subdirs if os.path.isdir(subdir)]
 subdir_basenames = [os.path.basename(subdir).lower() for subdir in data_subdirs]
 
 env_files = [glob.glob(os.path.join(subdir,'*env.npy'))[0] for subdir in data_subdirs]
-table_files = [glob.glob(os.path.join(subdir,'*table.npy'))[0] for subdir in data_subdirs]
-
 # Load env and table files
 # days x tastes x trials x time
 envs = np.stack([np.load(env_file) for env_file in env_files])
 
+############################################################
+# Get scored data 
+############################################################
 # Extract dig-in from datasets
 raw_data_dir = '/media/fastdata/NB_data/NB27'
 # Find HDF5 files
@@ -54,182 +57,112 @@ order_bool = [x in y for x,y in zip(subdir_basenames, h5_basenames)]
 if not all(order_bool):
     raise Exception('Bubble bubble, toil and trouble')
 
-# Extract dig-ins
-dig_in_list = []
-for i, h5_file in enumerate(h5_files):
-    session_dig_in_list = []
-    h5 = tables.open_file(h5_file, 'r')
-    for this_dig in h5.root.digital_in._f_iter_nodes():
-        session_dig_in_list.append(this_dig[:])
-    h5.close()
-    dig_in_list.append(session_dig_in_list)
+# Run pipeline
+all_taste_orders = return_taste_orders(h5_files)
+fin_table = process_scored_data(data_subdirs, all_taste_orders)
 
-all_starts = []
-for this_session in dig_in_list:
-    session_starts = []
-    for this_dig in this_session:
-        starts = np.where(np.diff(this_dig) == 1)[0]
-        session_starts.append(starts)
-    all_starts.append(session_starts)
+############################################################
+# Extract mouth movements 
+############################################################
+pre_stim = 2000
+post_stim = 5000
+gapes_Li = np.zeros(envs.shape)
 
-all_starts = np.stack(all_starts)
-all_starts = all_starts / 30000
-all_starts = np.round(all_starts).astype(int)
+segment_dat_list = []
+inds = list(np.ndindex(envs.shape[:3]))
+for this_ind in inds:
+    this_trial_dat = envs[this_ind]
 
-# Find order of deliveries for each session
-all_taste_orders = []
-for this_session in all_starts:
-    bin_array = np.zeros((this_session.max(), len(this_session)))
-    for i, this_dig in enumerate(this_session):
-        bin_array[this_dig-1,i] = 1
-    taste_order = np.where(bin_array)[1]
-    all_taste_orders.append(taste_order)
-all_taste_orders = np.array(all_taste_orders)
+    ### Jenn Li Process ###
+    # Get peak indices
+    this_day_prestim_dat = envs[this_ind[0], :, :, :pre_stim]
+    gape_peak_inds = JL_process(
+                        this_trial_dat, 
+                        this_day_prestim_dat,
+                        pre_stim,
+                        post_stim,
+                        this_ind,)
+    if gape_peak_inds is not None:
+        gapes_Li[this_ind][gape_peak_inds] = 1
 
-# Process score tables
-score_tables = [np.load(table_file, allow_pickle=True) for table_file in table_files]
-# Only first and last columns are relevant
-score_tables = [x[:,[0,-2,-1]] for x in score_tables]
+    ### AM Process ###
+    segment_starts, segment_ends, segment_dat = extract_movements(
+        this_trial_dat, size=200)
 
-# Convert to pandas dataframes
-score_tables = [pd.DataFrame(x, columns=['event','mark_type','time']) for x in score_tables]
-updated_tables = []
-for i, table in enumerate(score_tables):
-    table['day'] = subdir_basenames[i] 
-    table.sort_values(by=['day','time'], inplace=True)
-    table.reset_index(inplace=True, drop=True)
+    # Threshold movement lengths
+    segment_starts, segment_ends, segment_dat = threshold_movement_lengths(
+        segment_starts, segment_ends, segment_dat, 
+        min_len = 50, max_len= 500)
 
-    # Mark trials in fin_table
-    table['trial'] = None
-    trial_count = -1
-    for j in range(len(table)):
-        if table.loc[j]['event'] == 'trial start':
-            trial_count += 1
-        table.loc[j]['trial'] = trial_count
-    updated_tables.append(table)
+    #plt.plot(this_trial_dat)
+    #for i in range(len(segment_starts)):
+    #    plt.plot(np.arange(segment_starts[i], segment_ends[i]),
+    #             segment_dat[i], linewidth = 5, alpha = 0.5)
+    #plt.show()
 
-# Note, day 3 only has 117 trials
-fin_table = pd.concat(updated_tables)
+    (feature_array,
+     feature_names,
+     segment_dat,
+     segment_starts,
+     segment_ends) = extract_features(
+        segment_dat, segment_starts, segment_ends)
 
-# Keep only trials with more than one event (that is more than trial start)
-#fin_table = fin_table.groupby('trial').filter(lambda x: len(x) > 1)
-fin_table['day_ind'] = [int(str(x)[-1])-1 for x in fin_table.day]
-fin_table.reset_index(inplace=True, drop=True)
+    segment_bounds = list(zip(segment_starts, segment_ends))
+    merged_dat = [feature_array, segment_dat, segment_bounds] 
+    segment_dat_list.append(merged_dat)
 
-# Mark taste for each trial
-taste_list = []
-for i in range(len(fin_table)):
-    day_ind = fin_table.loc[i]['day_ind']
-    trial_ind = fin_table.loc[i]['trial']
-    this_taste = all_taste_orders[day_ind, trial_ind]
-    taste_list.append(this_taste)
+gape_frame, scaled_features = gen_gape_frame(segment_dat_list, gapes_Li, inds)
 
-fin_table['taste'] = taste_list
+# Plot gapes LI
+mean_gapes_Li = np.mean(gapes_Li, axis=2)
+# Smooth with gaussian filter
+from scipy.ndimage import gaussian_filter1d
+mean_gapes_Li = gaussian_filter1d(mean_gapes_Li, 75, axis=2)
 
-# Also find what delivery of the given taste this is
-group_list=  [x[1] for x in list(fin_table.groupby(['day','taste']))]
-updated_tables = []
-for this_table in group_list:
-    unique_trials = this_table.trial.unique()
-    trial_map = {x:i for i,x in enumerate(unique_trials)}
-    this_table['taste_trial'] = [trial_map[x] for x in this_table.trial]
-    updated_tables.append(this_table)
-
-fin_table = pd.concat(updated_tables)
-
-# Calculate relative time from start of each trial
-group_list = list(fin_table.groupby(['day','trial']))
-group_list = [x[1] for x in group_list]
-updated_tables = []
-for i, table in enumerate(group_list):
-    table['rel_time'] = table['time'] - table['time'].iloc[0]
-    updated_tables.append(table)
-fin_table = pd.concat(updated_tables)
-fin_table['rel_time'] *= 1000
-# Convert rel_time to int
-fin_table['rel_time'] = fin_table['rel_time'].astype(int)
-
-# Only point type mark is trial start
-# Now that we have rel_time, drop all trial starts and make starts and end columns
-# That is, convert long to wide
-fin_table = fin_table.loc[fin_table.event != 'trial start']
-fin_table.reset_index(inplace=True, drop=True)
-
-index_cols = ['event','trial','taste','day']
-# Group by day and sort by time
-group_list = list(fin_table.groupby(['day']))
-group_list = [x[1] for x in group_list]
-updated_tables = []
-for i, table in enumerate(group_list):
-    table.sort_values(by=['time'], inplace=True)
-    table.reset_index(inplace=True, drop=True)
-    updated_tables.append(table)
-fin_table = pd.concat(updated_tables)
-
-start_table = fin_table.loc[fin_table.mark_type == 'START']
-stop_table = fin_table.loc[fin_table.mark_type == 'STOP']
-start_table['event_num'] = np.arange(len(start_table))
-stop_table['event_num'] = np.arange(len(stop_table))
-
-fin_table = start_table.merge(stop_table, how = 'outer', 
-                  on = ['event','event_num','trial','taste','day','taste_trial', 'day_ind'], 
-                  suffixes = ('_start','_stop'))
-fin_table.drop(['mark_type_start','mark_type_stop'], axis=1, inplace=True)
-
-## Assign event numbers to all events (all events will have a start and stop)
-#fin_table['event_num'] = None
-#for i in range(len(fin_table)//2):
-#    fin_table.loc[i*2, 'event_num'] = i
-#    fin_table.loc[(i*2)+1, 'event_num'] = i
-#
-#event_group_list = [x[1] for x in fin_table.groupby('event_num')]
-#updated_tables = []
-#val_cols = ['time','rel_time']
-#start_cols = ['start_time','start_rel_time']
-#stop_cols = ['stop_time','stop_rel_time']
-#for this_event in event_group_list:
-#    starts = this_event.loc[this_event.mark_type == 'START', val_cols]
-#    stops = this_event.loc[this_event.mark_type == 'STOP', val_cols]
-#    new_row = this_event.iloc[0].drop(val_cols)
-#    new_row.drop('mark_type', inplace=True)
-#    new_row = new_row.to_frame().transpose()
-#    new_row[start_cols] = starts.values
-#    new_row[stop_cols] = stops.values
-#    updated_tables.append(new_row)
-
-plot_group = list(fin_table.groupby(['day_ind','taste','taste_trial']))
-plot_inds = [x[0] for x in plot_group]
-plot_dat = [x[1] for x in plot_group]
-
-t = np.arange(-2000, 5000)
-
-event_types = fin_table.event.unique()
-cmap = plt.get_cmap('tab10')
-event_colors = {event_types[i]:cmap(i) for i in range(len(event_types))}
-
-# Generate custom legend
-from matplotlib.patches import Patch
-
-legend_elements = [Patch(facecolor=event_colors[event], edgecolor='k',
-                         label=event) for event in event_types]
-
-plot_n = 15
-fig,ax = plt.subplots(plot_n, 1, sharex=True,
-                      figsize = (10, plot_n*2))
-for i in range(plot_n):
-    this_scores = plot_dat[i]
-    this_inds = plot_inds[i]
-    this_env = envs[this_inds]
-    ax[i].plot(t, this_env)
-    for _, this_event in this_scores.iterrows():
-        event_type = this_event.event
-        start_time = this_event.rel_time_start
-        stop_time = this_event.rel_time_stop
-        this_event_c = event_colors[event_type]
-        ax[i].axvspan(start_time, stop_time, 
-                      color=this_event_c, alpha=0.5, label=event_type)
-ax[0].legend(handles=legend_elements, loc='upper right',
-             bbox_to_anchor=(1.5, 1.1))
-ax[0].set_xlim([0, 5000])
-fig.subplots_adjust(right=0.75)
+fig, ax = plt.subplots(*mean_gapes_Li.shape[:2], sharex=True, sharey=True)
+fig.suptitle('Smoothed Gapes Li (75ms SD Gaussian)')
+for i in range(mean_gapes_Li.shape[0]):
+    for j in range(mean_gapes_Li.shape[1]):
+        ax[i,j].plot(mean_gapes_Li[i,j,:])
+        ax[i,j].set_title('Day {}, Taste {}'.format(i,j))
 plt.show()
+
+############################################################
+# Test plots 
+############################################################
+#plot_group = list(fin_table.groupby(['day_ind','taste','taste_trial']))
+#plot_inds = [x[0] for x in plot_group]
+#plot_dat = [x[1] for x in plot_group]
+#
+#t = np.arange(-2000, 5000)
+#
+#event_types = fin_table.event.unique()
+#cmap = plt.get_cmap('tab10')
+#event_colors = {event_types[i]:cmap(i) for i in range(len(event_types))}
+#
+## Generate custom legend
+#from matplotlib.patches import Patch
+#
+#legend_elements = [Patch(facecolor=event_colors[event], edgecolor='k',
+#                         label=event) for event in event_types]
+#
+#plot_n = 15
+#fig,ax = plt.subplots(plot_n, 1, sharex=True,
+#                      figsize = (10, plot_n*2))
+#for i in range(plot_n):
+#    this_scores = plot_dat[i]
+#    this_inds = plot_inds[i]
+#    this_env = envs[this_inds]
+#    ax[i].plot(t, this_env)
+#    for _, this_event in this_scores.iterrows():
+#        event_type = this_event.event
+#        start_time = this_event.rel_time_start
+#        stop_time = this_event.rel_time_stop
+#        this_event_c = event_colors[event_type]
+#        ax[i].axvspan(start_time, stop_time, 
+#                      color=this_event_c, alpha=0.5, label=event_type)
+#ax[0].legend(handles=legend_elements, loc='upper right',
+#             bbox_to_anchor=(1.5, 1.1))
+#ax[0].set_xlim([0, 5000])
+#fig.subplots_adjust(right=0.75)
+#plt.show()
