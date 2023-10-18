@@ -7,6 +7,8 @@ import tables
 import pylab as plt
 import pandas as pd
 import glob
+from tqdm import tqdm
+from matplotlib.patches import Patch
 
 # Have to be in blech_clust/emg/gape_QDA_classifier dir
 os.chdir(os.path.expanduser('~/Desktop/blech_clust/emg/gape_QDA_classifier/_experimental/mouth_movement_clustering'))
@@ -59,7 +61,7 @@ if not all(order_bool):
 
 # Run pipeline
 all_taste_orders = return_taste_orders(h5_files)
-fin_table = process_scored_data(data_subdirs, all_taste_orders)
+fin_scored_table = process_scored_data(data_subdirs, all_taste_orders)
 
 ############################################################
 # Extract mouth movements 
@@ -112,8 +114,76 @@ for this_ind in inds:
     segment_dat_list.append(merged_dat)
 
 gape_frame, scaled_features = gen_gape_frame(segment_dat_list, gapes_Li, inds)
+# Bounds for gape_frame are in 0-7000 time
+# Adjust to make -2000 -> 5000
+# Adjust segment_bounds by removing pre_stim
+all_segment_bounds = gape_frame.segment_bounds.values
+adjusted_segment_bounds = [np.array(x)-pre_stim for x in all_segment_bounds]
+gape_frame['segment_bounds'] = adjusted_segment_bounds
 
+###############################
+## Plot segments using gape_frame
+#gape_frame_trials = list(gape_frame.groupby(['channel','taste','trial']))
+#gape_trials_inds = [x[0] for x in gape_frame_trials]
+#gape_trials_dat = [x[1] for x in gape_frame_trials]
+#
+#plot_n = 15
+#fig,ax = plt.subplots(plot_n, 1, sharex=True, sharey=True,
+#                      figsize = (10, plot_n*2))
+#for i in range(plot_n):
+#    this_ind = gape_trials_inds[i]
+#    this_env = envs[this_ind]
+#    this_gape_dat = gape_trials_dat[i]
+#    ax[i].plot(this_env, c = 'k', zorder = 10)
+#    for this_segment in this_gape_dat.segment_bounds:
+#        ax[i].plot(np.arange(this_segment[0], this_segment[1]),
+#                   this_env[this_segment[0]:this_segment[1]],
+#                   linewidth = 5, alpha = 0.7)
+#plt.show()
+
+##############################
+
+gape_frame.rename(columns={'channel': 'day_ind'}, inplace=True)
+
+# Calculate segment centers
+gape_frame['segment_center'] = [np.mean(x) for x in gape_frame.segment_bounds]
+
+# Create segment bounds for fin_scored_table
+fin_scored_table['segment_bounds'] = list(zip(fin_scored_table['rel_time_start'], fin_scored_table['rel_time_stop']))
+
+# Make sure that each segment in gape_frame is in fin_score_table
+score_match_cols = ['day_ind','taste','taste_trial']
+gape_match_cols = ['day_ind','taste,','trial']
+
+score_bounds_list = []
+for ind, row in tqdm(gape_frame.iterrows()):
+    day_ind = row.day_ind
+    taste = row.taste
+    taste_trial = row.trial
+    segment_center = row.segment_center
+    wanted_score_table = fin_scored_table.loc[
+        (fin_scored_table.day_ind == day_ind) &
+        (fin_scored_table.taste == taste) &
+        (fin_scored_table.taste_trial == taste_trial)]
+    if len(wanted_score_table):
+        # Check if segment center is in any of the scored segments
+        for _, score_row in wanted_score_table.iterrows():
+            if (score_row.segment_bounds[0] <= segment_center) & (segment_center <= score_row.segment_bounds[1]):
+                gape_frame.loc[ind, 'scored'] = True
+                gape_frame.loc[ind, 'event_type'] = score_row.event  
+                score_bounds_list.append(score_row.segment_bounds)
+                break
+            else:
+                gape_frame.loc[ind, 'scored'] = False
+
+scored_gape_frame = gape_frame.loc[gape_frame.scored == True]
+scored_gape_frame['score_bounds'] = score_bounds_list
+
+############################################################
+# Test plots 
+############################################################
 # Plot gapes LI
+##############################
 mean_gapes_Li = np.mean(gapes_Li, axis=2)
 # Smooth with gaussian filter
 from scipy.ndimage import gaussian_filter1d
@@ -127,9 +197,8 @@ for i in range(mean_gapes_Li.shape[0]):
         ax[i,j].set_title('Day {}, Taste {}'.format(i,j))
 plt.show()
 
-############################################################
-# Test plots 
-############################################################
+# Plot scored data
+##############################
 #plot_group = list(fin_table.groupby(['day_ind','taste','taste_trial']))
 #plot_inds = [x[0] for x in plot_group]
 #plot_dat = [x[1] for x in plot_group]
@@ -166,3 +235,47 @@ plt.show()
 #ax[0].set_xlim([0, 5000])
 #fig.subplots_adjust(right=0.75)
 #plt.show()
+
+# Plot scored, segmented data
+#############################
+plot_group = list(scored_gape_frame.groupby(['day_ind','taste','trial']))
+plot_inds = [x[0] for x in plot_group]
+plot_dat = [x[1] for x in plot_group]
+
+t = np.arange(-2000, 5000)
+
+event_types = scored_gape_frame.event_type.unique()
+cmap = plt.get_cmap('tab10')
+event_colors = {event_types[i]:cmap(i) for i in range(len(event_types))}
+
+# Generate custom legend
+legend_elements = [Patch(facecolor=event_colors[event], edgecolor='k',
+                         label=event) for event in event_types]
+
+plot_n = 15
+fig,ax = plt.subplots(plot_n, 1, sharex=True, sharey=True,
+                      figsize = (10, plot_n*2))
+for i in range(plot_n):
+    this_scores = plot_dat[i]
+    this_inds = plot_inds[i]
+    this_env = envs[this_inds]
+    ax[i].plot(t, this_env, color = 'k')
+    for _, this_event in this_scores.iterrows():
+        event_type = this_event.event_type
+        score_start = this_event.score_bounds[0]
+        score_stop = this_event.score_bounds[1]
+        segment_start = this_event.segment_bounds[0]
+        segment_stop = this_event.segment_bounds[1]
+        segment_inds = np.logical_and(t >= segment_start, t <= segment_stop) 
+        segment_t = t[segment_inds]
+        segment_env = this_env[segment_inds]
+        ax[i].plot(segment_t, segment_env, color='k')
+        ax[i].plot(segment_t, segment_env, linewidth = 5, alpha = 0.7)
+        this_event_c = event_colors[event_type]
+        ax[i].axvspan(score_start, score_stop, 
+                      color=this_event_c, alpha=0.5, label=event_type)
+ax[0].legend(handles=legend_elements, loc='upper right',
+             bbox_to_anchor=(1.5, 1.1))
+ax[0].set_xlim([0, 5000])
+fig.subplots_adjust(right=0.75)
+plt.show()
