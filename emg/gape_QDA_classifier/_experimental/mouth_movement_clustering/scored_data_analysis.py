@@ -30,6 +30,7 @@ from gape_clust_funcs import (extract_movements,
 
 import itertools
 from sklearn.cluster import KMeans, AgglomerativeClustering
+from sklearn.decomposition import PCA
 
 ############################################################
 ############################################################
@@ -214,8 +215,11 @@ plot_dat = [x[1] for x in plot_group]
 
 t = np.arange(-2000, 5000)
 
-event_types = scored_gape_frame.event_type.unique()
-cmap = plt.get_cmap('tab10')
+#event_types = scored_gape_frame.event_type.unique()
+#cmap = plt.get_cmap('tab10')
+event_types = ['mouth movements','unknown mouth movement','gape','tongue protrusions','lateral tongue protrusions']
+scored_gape_frame = scored_gape_frame.loc[scored_gape_frame.event_type.isin(event_types)]
+cmap = plt.get_cmap('tab10')# len(event_types))
 event_colors = {event_types[i]:cmap(i) for i in range(len(event_types))}
 
 # Generate custom legend
@@ -260,7 +264,8 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 
-wanted_event_types = ['gape','tongue protrusion','lateral tongue protrusion',]
+#wanted_event_types = ['gape','tongue protrusion','lateral tongue protrusion',]
+wanted_event_types = ['gape','tongue protrusion',]
 
 # Plot examples of all wanted events
 plot_gape_frame = scored_gape_frame.loc[scored_gape_frame.event_type.isin(wanted_event_types)]
@@ -386,7 +391,8 @@ y_pred_list = np.array(y_pred_list)
 
 # Average confusion matrix
 # Only take cases with all 3 labels
-wanted_xgb_confusion = [x for x in xgb_confusion if x.shape == (3,3)]
+label_len = len(wanted_event_types)
+wanted_xgb_confusion = [x for x in xgb_confusion if x.shape == (label_len,label_len)]
 avg_confusion = np.mean(wanted_xgb_confusion, axis = 0)
 std_confusion = np.std(wanted_xgb_confusion, axis = 0)
 
@@ -394,16 +400,16 @@ std_confusion = np.std(wanted_xgb_confusion, axis = 0)
 norm_avg_confusion = avg_confusion / avg_confusion.sum(axis=-1)[:,None]
 norm_std_confusion = std_confusion / avg_confusion.sum(axis=-1)[:,None]
 
-plt.matshow(norm_avg_confusion)
-plt.xticks(range(3), y_labels, rotation = 45)
-plt.yticks(range(3), y_labels)
+plt.matshow(norm_avg_confusion, vmin = 0, vmax = 1)
+plt.xticks(range(label_len), y_labels, rotation = 45)
+plt.yticks(range(label_len), y_labels)
 plt.xlabel('Predicted')
 plt.ylabel('True')
 plt.title('Average Confusion Matrix')
 plt.colorbar(label = 'Fraction of Predictions')
 # Also plot text in each square
-for i in range(3):
-    for j in range(3):
+for i in range(label_len):
+    for j in range(label_len):
         plt.text(j, i, '{:.2f}'.format(norm_avg_confusion[i,j]) + '\n' + '± {:.2f}'.format(norm_std_confusion[i,j]), 
                  horizontalalignment="center", 
                  verticalalignment="center",
@@ -428,29 +434,34 @@ plt.close(fig)
 from sklearn.neighbors import NeighborhoodComponentsAnalysis as NCA
 
 # Train NCA
-nca_model = NCA(n_components=3)
+nca_model = NCA(n_components=2)
 nca_model.fit(X, y)
 nca_out = nca_model.transform(X)
 
-# Plot 3D scatter 
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
+fig,ax = plt.subplots()
 for i, this_event_type in enumerate(y_labels):
     this_nca_out = nca_out[y == i]
-    if not this_event_type == 'lateral tongue protrusion':
-        ax.scatter(this_nca_out[:,0], this_nca_out[:,1], this_nca_out[:,2],
-                   label = this_event_type.title(), alpha = 0.7)
-    else:
-        ax.scatter(this_nca_out[:,0], this_nca_out[:,1], this_nca_out[:,2],
-                   label = this_event_type.title(), s = 50,
-                   color = 'k')
+    ax.scatter(this_nca_out[:,0], this_nca_out[:,1], 
+               label = this_event_type.title(), alpha = 0.7)
+## Plot 3D scatter 
+#fig = plt.figure()
+#ax = fig.add_subplot(111, projection='3d')
+#for i, this_event_type in enumerate(y_labels):
+#    this_nca_out = nca_out[y == i]
+#    if not this_event_type == 'lateral tongue protrusion':
+#        ax.scatter(this_nca_out[:,0], this_nca_out[:,1], this_nca_out[:,2],
+#                   label = this_event_type.title(), alpha = 0.7)
+#    else:
+#        ax.scatter(this_nca_out[:,0], this_nca_out[:,1], this_nca_out[:,2],
+#                   label = this_event_type.title(), s = 50,
+#                   color = 'k')
 ax.legend()
 ax.set_xlabel('NCA 1')
 ax.set_ylabel('NCA 2')
-ax.set_zlabel('NCA 3')
-ax.set_title('NCA of Mouth Movements')
-plt.show()
-
+ax.set_aspect('equal')
+#ax.set_zlabel('NCA 3')
+#ax.set_title('NCA of Mouth Movements')
+#plt.show()
 fig.savefig(os.path.join(plot_dir, 'nca.svg'),
             bbox_inches='tight')
 plt.close(fig)
@@ -563,3 +574,25 @@ fig = sns.pairplot(X_frame)
 fig.savefig(os.path.join(plot_dir, 'feature_pairplot'),
             bbox_inches='tight')
 plt.close(fig)
+
+# Spearman correlation for all features
+corr = X_frame.corr(method = 'spearman')
+
+fig = plt.matshow(np.abs(corr))
+plt.xticks(range(len(feature_names)), feature_names, rotation = 45)
+plt.yticks(range(len(feature_names)), feature_names)
+plt.title('Spearman Correlation')
+plt.colorbar(label = 'Correlation')
+plt.savefig(os.path.join(plot_dir, 'feature_correlation.svg'),
+            bbox_inches='tight')
+plt.close()
+
+# PCA of features
+# Keep 95% of variance explained
+pca = PCA()
+pca.fit(X_frame)
+cum_var = np.cumsum(pca.explained_variance_ratio_)
+n_components = np.where(cum_var > 0.95)[0][0] + 1
+
+plt.plot(cum_var, '-x');plt.show()
+
