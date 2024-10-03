@@ -59,6 +59,15 @@ pip install -r neuRecommend/requirements.txt
 cd <path_to_blech_clust>/requirements                       # Move into blech_clust folder with requirements files
 conda config --set channel_priority strict                  # Set channel priority to strict, THIS IS IMPORTANT, flexible channel priority may not work
 bash emg_install.sh                                         # Install EMG requirements
+
+### Install BlechRNN for firing rate estimation (OPTIONAL)
+cd ~/Desktop                                                # Relocate to download BlechRNN
+git clone https://github.com/abuzarmahmood/blechRNN.git     # Download BlechRNN
+cd blechRNN                                                 # Move into BlechRNN directory
+pip install $(cat requirements.txt | egrep "torch")         # Install only pytorch requirements 
+**Note: If you'd like to use GPU, you'll need to install CUDA
+-- Suggested resource : https://medium.com/@jeanpierre_lv/installing-pytorch-with-gpu-support-on-ubuntu-a-step-by-step-guide-38dcf3f8f266
+
 ```
 - Parameter files will need to be setup according to [Setting up params](https://github.com/abuzarmahmood/blech_clust/wiki/Getting-Started#setting-up-params)
 
@@ -122,6 +131,31 @@ While you're there, you should also copy and adapt the other two params template
 bash blech_clust_pre.sh $DIR   # Perform steps up to spike extraction and UMAP  
 python blech_post_process.py   # Add sorted units to HDF5 (CLI or .CSV as input)  
 bash blech_clust_post.sh       # Perform steps up to PSTH generation
+```
+
+### Utilities
+#### utils/infer_rnn_rates.py
+
+This script is used to infer firing rates from spike trains using a Recurrent Neural Network (RNN). The RNN is trained on the spike trains and the firing rates are inferred from the trained model. The script uses the `BlechRNN` library for training the RNN.
+
+```
+usage: infer_rnn_rates.py [-h] [--train_steps TRAIN_STEPS] [--hidden_size HIDDEN_SIZE] [--bin_size BIN_SIZE] [--no_pca] [--retrain] data_dir
+
+Infer firing rates using RNN
+
+positional arguments:
+  data_dir              Path to data directory
+
+options:
+  -h, --help            show this help message and exit
+  --train_steps TRAIN_STEPS
+                        Number of training steps
+  --hidden_size HIDDEN_SIZE
+                        Hidden size of RNN
+  --bin_size BIN_SIZE   Bin size for binning spikes
+  --no_pca              Do not use PCA for preprocessing
+  --retrain             Force retraining of model. Will overwrite existing model
+
 ```
 
 ### Test Dataset
